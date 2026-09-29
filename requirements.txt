@@ -1,0 +1,3 @@
+# Install a CUDA-enabled PyTorch build for your host before these dependencies.
+# Keep runtime dependencies in pyproject.toml as the single source of truth.
+-e .

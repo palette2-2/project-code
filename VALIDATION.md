@@ -1,18 +1,72 @@
-# 验证记录（2026-09-29）
+# Validation record
 
-验证目录：`/home/hongwu/thor1-tug/thor-deploy`。
+Validation date: 2026-09-29. Scope: standalone extraction and repository
+organization, on the existing Ubuntu x86_64 host. No robot motion was started.
 
-- 在新目录从源码重新编译 `g1_control` 和 `hand_control` 成功；`ldd` 检查无缺失动态库，DDS 库解析到新目录。
-- `thor1-tug-deploy` 环境：部署遥控映射和电机监测 23 项测试通过。
-- `gmr_axell` 环境：PICO、上肢参考、Dex3 状态机及 LCM 兼容性 22 项测试通过。
-- 从 `/tmp` 清除 `PYTHONPATH` 后运行部署入口 `--help` 成功。
-- 同样从 `/tmp` 清除 `PYTHONPATH` 后运行 `scripts/check_offline.py` 成功：真实 0909 ONNX + CUDA PyTorch，分别对 Unitree 和 PICO 来源执行 100 步原部署管线（单帧 115 维 → 历史 575 维 → 输出 29 维），输出及编码目标均有限；全部部署模块来自新目录。LCM 使用内存替身，未发送机器人命令。这是软件管线检查，不是物理仿真或稳定性验证。
-- GMR 与支持 callback API 的 XRoboToolkit binding 实际导入成功；`xrobot -> unitree_g1` GMR 模型、网格和 IK 配置初始化成功（nq=36，nv=35）。
-- 新目录只有一个 ONNX，没有 `.pt` / `.pth` checkpoint；模型 SHA256 与源文件一致：`a3664468b58b3e02444ec1057a98a8a4fe0bf6123be8f3be13c40d1e77a339e3`。
-- 身体/手部控制源码、LCMAgent、PICO 桥和 Dex3 JSON 均逐字节与源文件一致。
+## Environment
 
-使用已有环境：PyTorch 2.4.1+cu121（CUDA 可用）、ONNX Runtime 1.19.2、NumPy 1.21.6、Matplotlib 3.7.5、Pandas 2.0.3；遥操作 SciPy 1.15.3。
+| Component | Locally tested version |
+| --- | --- |
+| Policy Python | 3.8.20 |
+| PyTorch | 2.4.1+cu121; CUDA available |
+| ONNX Runtime | 1.19.2 |
+| NumPy (policy) | 1.21.6 |
+| Matplotlib / Pandas | 3.7.5 / 2.0.3 |
+| Teleop Python / SciPy | 3.10.20 / 1.15.3 |
+| System LCM | 1.3.1 |
+| GMR source revision | `a2c0f50714376061f93b953bf38dd6e19d0c88d3` |
+| XR binding source revision | `1f54475cfbcde7ed511c6ba3b1a2bba45bbdfe6f` |
 
-复制后修改限于部署入口的本地导入优先级/相对模型路径、清理旧模型注释、依赖清单、录制默认输出位置、文档及新增启动/验证脚本。原训练仓库未修改。
+The dependency ranges in `pyproject.toml` are installation requirements, not a
+claim that every version/architecture combination was tested. The two existing
+Conda environments were reused without replacing their runtime dependencies.
 
-未执行真实机器人运动、PICO 实时追踪及跨机器网络测试；上述验证不能代替实机联调。第三方环境安装位置和操作步骤见 README。
+## Results after organization
+
+- Root CMake build: `g1_control` and `hand_control` compile and link successfully.
+  Their DDS dependencies resolve inside the new repository; no missing `ldd` entries.
+- Policy/control tests: **28 passed**, including model-path precedence, import
+  without opening LCM, CLI option forwarding and help from another directory.
+- Teleop tests: **22 passed**, including PICO arming, pause/resume, Dex3
+  interpolation, stale-data handling, JSON validation and LCM wire compatibility.
+- Real ONNX/CUDA offline pipeline: **100 steps for each RC source**, 200 total;
+  115-dimensional observations, 575-dimensional history and 29-dimensional
+  outputs, with finite action/target checks and encoded LCM messages. Transport
+  is in memory. Deployment imports resolve to this repository.
+- Optional dependency check: callback APIs import, `xrobot -> unitree_g1` GMR
+  assets and IK initialize (`nq=36`, `nv=35`), Dex3 configuration validates.
+- Supplied XR callback patch: applying it to the recorded base reproduces the
+  tested binding C++ source byte for byte.
+- Python wheel builds using the existing build tools without fetching dependencies.
+- A clean export of the staged Git tree builds both native controllers. An isolated
+  temporary environment installs that export in editable mode with the required
+  setuptools backend, runs the installed CLI, and passes all 50 tests, the real
+  ONNX offline check and the optional teleop asset check. No untracked repository
+  files are needed. External runtime dependencies were reused from the host.
+- Formatting of inherited Python modules preserves their parsed syntax trees.
+- The 0909 checkpoint is the only ONNX; SHA256 remains
+  `a3664468b58b3e02444ec1057a98a8a4fe0bf6123be8f3be13c40d1e77a339e3`.
+- C++ controller source, generated LCM bindings and hand pose configuration are
+  retained from the baseline. Python packaging/imports and the policy entry point
+  changed; control gains, joint ordering and action scaling did not.
+
+## Reproduce
+
+```bash
+bash scripts/build.sh
+# In the policy environment:
+bash scripts/test.sh policy
+python scripts/check_offline.py
+# In the teleop environment:
+bash scripts/test.sh teleop
+python scripts/check_teleop.py
+```
+
+## Limits
+
+No actual G1/Dex3 motion, PICO live tracking, multi-host transport or Jetson/aarch64
+run was tested. The offline pipeline is not a dynamics/stability test. The full
+external GMR/XRoboToolkit installation was not rebuilt on a clean machine.
+The included GitHub Actions workflow has not run on GitHub; its native build and
+unit-test commands were exercised locally. Publication licensing remains as
+recorded in `LICENSE.md`.

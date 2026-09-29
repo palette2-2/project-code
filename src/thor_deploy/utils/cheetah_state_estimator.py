@@ -6,15 +6,15 @@ import time
 import numpy as np
 import torch
 
-from lcm_types.body_control_data_lcmt import body_control_data_lcmt
-from lcm_types.rc_command_lcmt import rc_command_lcmt
-from lcm_types.state_estimator_lcmt import state_estimator_lcmt
-from lcm_types.arm_action_lcmt import arm_action_lcmt
-from lcm_types.command_lcmt import command_lcmt
-from lcm_types.ref_upper_dof_pos_lcmt import ref_upper_dof_pos_lcmt
-from lcm_types.motor_safety_state_lcmt import motor_safety_state_lcmt
-from utils.motor_safety_monitor import MotorSafetyMonitor
-from utils.rc_command_mapping import (
+from thor_deploy.lcm_types.body_control_data_lcmt import body_control_data_lcmt
+from thor_deploy.lcm_types.rc_command_lcmt import rc_command_lcmt
+from thor_deploy.lcm_types.state_estimator_lcmt import state_estimator_lcmt
+from thor_deploy.lcm_types.arm_action_lcmt import arm_action_lcmt
+from thor_deploy.lcm_types.command_lcmt import command_lcmt
+from thor_deploy.lcm_types.ref_upper_dof_pos_lcmt import ref_upper_dof_pos_lcmt
+from thor_deploy.lcm_types.motor_safety_state_lcmt import motor_safety_state_lcmt
+from thor_deploy.utils.motor_safety_monitor import MotorSafetyMonitor
+from thor_deploy.utils.rc_command_mapping import (
     BaseHeightVelocityController,
     BodyYawRateWithHeadingHoldController,
     WaistYawVelocityController,
@@ -22,11 +22,13 @@ from utils.rc_command_mapping import (
 )
 import lcm
 import os
+
+
 def get_rpy_from_quaternion(q):
     w, x, y, z = q
-    r = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x ** 2 + y ** 2))
+    r = np.arctan2(2 * (w * x + y * z), 1 - 2 * (x**2 + y**2))
     p = np.arcsin(2 * (w * y - z * x))
-    y = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y ** 2 + z ** 2))
+    y = np.arctan2(2 * (w * z + x * y), 1 - 2 * (y**2 + z**2))
     return np.array([r, p, y])
 
 
@@ -39,20 +41,17 @@ def get_rotation_matrix_from_rpy(rpy):
         np.array[float[3,3]]: rotation matrix.
     """
     r, p, y = rpy
-    R_x = np.array([[1, 0, 0],
-                    [0, math.cos(r), -math.sin(r)],
-                    [0, math.sin(r), math.cos(r)]
-                    ])
+    R_x = np.array(
+        [[1, 0, 0], [0, math.cos(r), -math.sin(r)], [0, math.sin(r), math.cos(r)]]
+    )
 
-    R_y = np.array([[math.cos(p), 0, math.sin(p)],
-                    [0, 1, 0],
-                    [-math.sin(p), 0, math.cos(p)]
-                    ])
+    R_y = np.array(
+        [[math.cos(p), 0, math.sin(p)], [0, 1, 0], [-math.sin(p), 0, math.cos(p)]]
+    )
 
-    R_z = np.array([[math.cos(y), -math.sin(y), 0],
-                    [math.sin(y), math.cos(y), 0],
-                    [0, 0, 1]
-                    ])
+    R_z = np.array(
+        [[math.cos(y), -math.sin(y), 0], [math.sin(y), math.cos(y), 0], [0, 0, 1]]
+    )
 
     rot = np.dot(R_z, np.dot(R_y, R_x))
     return rot
@@ -62,8 +61,37 @@ class StateEstimator:
     def __init__(self, lc, rc_command_channel="rc_command", control_dt=0.02):
 
         # reverse legs, from cpp order to isaacgym order
-        self.joint_idxs = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28]
-
+        self.joint_idxs = [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+        ]
 
         self.lc = lc
         self.rc_command_channel = str(rc_command_channel)
@@ -82,7 +110,7 @@ class StateEstimator:
         self.R = np.eye(3)
         self.buf_idx = 0
         self.imu_ang_vel = np.zeros(3)
-        
+
         self.left_stick = [0, 0]
         self.right_stick = [0, 0]
         self.right_lower_right_switch = 0
@@ -91,19 +119,24 @@ class StateEstimator:
         self.right_upper_right_switch = 0
         self.right_upper_right_switch_pressed = 0
 
-
         self.init_time = time.time()
         self.received_first_bodydate = False
 
         self.avp_upper_dof_pos = np.zeros(14)
 
         self.imu_subscription = self.lc.subscribe("state_estimator_data", self._imu_cb)
-        self.bodydate_state_subscription = self.lc.subscribe("body_control_data", self._bodydata_cb)
+        self.bodydate_state_subscription = self.lc.subscribe(
+            "body_control_data", self._bodydata_cb
+        )
         self.motor_safety_subscription = self.lc.subscribe(
             "motor_safety_state", self._motor_safety_cb
         )
-        self.rc_command_subscription = self.lc.subscribe(self.rc_command_channel, self._rc_command_cb)
-        self.pedal_command_subscription = self.lc.subscribe("pedal_command", self._pedal_command_cb)
+        self.rc_command_subscription = self.lc.subscribe(
+            self.rc_command_channel, self._rc_command_cb
+        )
+        self.pedal_command_subscription = self.lc.subscribe(
+            "pedal_command", self._pedal_command_cb
+        )
         # self.arm_action_subscrition = self.new_lcm.subscribe("arm_action_lcmt", self._arm_action_cb)
 
         self.lc.subscribe("ref_upper_dof_pos_channel", self._receive_upper_dof_pos)
@@ -154,26 +187,28 @@ class StateEstimator:
         )
         self.rc_command_debug = os.environ.get("RC_COMMAND_DEBUG", "0") == "1"
         self.rc_command_debug_last_time = 0.0
-        
 
     def get_gravity_vector(self):
         grav = np.dot(self.R.T, np.array([0, 0, -1]))
         return grav
-    
+
     def get_projected_gravity(self):
         v = self.get_gravity_vector()
         q = self.get_base_quat()
 
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         v = torch.tensor(v, device=device).unsqueeze(0)
 
         shape = q.shape
         q_w = q[:, -1]
         q_vec = q[:, :3]
-        a = v * (2.0 * q_w ** 2 - 1.0).unsqueeze(-1)
+        a = v * (2.0 * q_w**2 - 1.0).unsqueeze(-1)
         b = torch.cross(q_vec, v, dim=-1) * q_w.unsqueeze(-1) * 2.0
-        c = q_vec * \
-            torch.bmm(q_vec.view(shape[0], 1, 3), v.view(shape[0], 3, 1)).squeeze(-1) * 2.0
+        c = (
+            q_vec
+            * torch.bmm(q_vec.view(shape[0], 1, 3), v.view(shape[0], 3, 1)).squeeze(-1)
+            * 2.0
+        )
         return a - b + c
 
     def get_base_quat(self):
@@ -186,7 +221,7 @@ class StateEstimator:
         roll_half = roll / 2.0
         pitch_half = pitch / 2.0
         yaw_half = yaw / 2.0
-        
+
         # 计算 sin 和 cos
         cr = np.cos(roll_half)
         sr = np.sin(roll_half)
@@ -194,17 +229,16 @@ class StateEstimator:
         sp = np.sin(pitch_half)
         cy = np.cos(yaw_half)
         sy = np.sin(yaw_half)
-        
+
         # 四元数分量
         w = cr * cp * cy + sr * sp * sy
         x = sr * cp * cy - cr * sp * sy
         y = cr * sp * cy + sr * cp * sy
         z = cr * cp * sy - sr * sp * cy
 
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # 拼接为 [x, y, z, w]
         return torch.tensor([x, y, z, w], device=device).unsqueeze(0)
-
 
     def get_rpy(self):
         return self.euler
@@ -221,8 +255,10 @@ class StateEstimator:
         # print('self.right_upper_right_switch_pressed', self.right_upper_right_switch_pressed)
         # print('msg.right_lower_left_switch', self.right_upper_right_switch)
         # print('=======================================================')
-        
-        if self.right_upper_right_switch_pressed and ((time.time() - self.change_time) > 2.0):
+
+        if self.right_upper_right_switch_pressed and (
+            (time.time() - self.change_time) > 2.0
+        ):
             self.right_upper_right_switch_pressed = False
             self.stand = 1 - self.stand
             self.change_time = time.time()
@@ -230,7 +266,7 @@ class StateEstimator:
         current_waist_yaw = self.get_dof_pos()[12]
         current_body_yaw = self.get_yaw()
 
-        if self.stand == 0:    ### 站立时
+        if self.stand == 0:  ### 站立时
             stand_waist_yaw = self.waist_yaw_controller.update(
                 -self.left_stick[0], current_waist_yaw, enabled=True
             )
@@ -241,7 +277,7 @@ class StateEstimator:
             )
             cmd_x = 0
             cmd_y = 0
-        else:                  ### 踏步时
+        else:  ### 踏步时
             stand_waist_yaw = self.waist_yaw_controller.update(
                 0.0, current_waist_yaw, enabled=False
             )
@@ -272,18 +308,28 @@ class StateEstimator:
                 )
             )
             self.rc_command_debug_last_time = now
-        
+
         #### 异常命令处理 ####
         if stand_waist_pitch < 0:
             stand_waist_pitch = 0
         # return self.command
-        return np.array([cmd_yaw, cmd_height, cmd_x, cmd_y, self.stand, stand_waist_yaw, stand_waist_roll, stand_waist_pitch])
+        return np.array(
+            [
+                cmd_yaw,
+                cmd_height,
+                cmd_x,
+                cmd_y,
+                self.stand,
+                stand_waist_yaw,
+                stand_waist_roll,
+                stand_waist_pitch,
+            ]
+        )
         # return np.array([cmd_yaw, cmd_height, cmd_x, cmd_y, 1, stand_waist_yaw, stand_waist_roll, stand_waist_pitch])
-    
 
     def get_buttons(self):
         return self.right_lower_right_switch
-    
+
     def get_upper_dof_pos(self):
         return self.avp_upper_dof_pos
 
@@ -321,9 +367,9 @@ class StateEstimator:
     def _motor_safety_cb(self, channel, data):
         msg = motor_safety_state_lcmt.decode(data)
         self.motor_tau_est = np.asarray(msg.tau_est, dtype=np.float64)
-        self.motor_temperature = np.asarray(
-            msg.temperature, dtype=np.int16
-        ).reshape(self.num_dofs, 2)
+        self.motor_temperature = np.asarray(msg.temperature, dtype=np.int16).reshape(
+            self.num_dofs, 2
+        )
         self.motor_state = np.asarray(msg.motor_state, dtype=np.int64)
         self.motor_safety_snapshot = self.motor_safety_monitor.update(
             self.motor_tau_est,
@@ -348,14 +394,18 @@ class StateEstimator:
         self.timeuprev = time.time()
         self.buf_idx += 1
         self.euler_prev = np.array(msg.rpy)
-        
+
     def _rc_command_cb(self, channel, data):
 
         msg = rc_command_lcmt.decode(data)
-        
-        self.right_lower_right_switch_pressed = ((msg.right_lower_right_switch and not self.right_lower_right_switch) or self.right_lower_right_switch_pressed)
 
-        self.right_upper_right_switch_pressed = ((msg.right_lower_left_switch and not self.right_upper_right_switch) or self.right_upper_right_switch_pressed)
+        self.right_lower_right_switch_pressed = (
+            msg.right_lower_right_switch and not self.right_lower_right_switch
+        ) or self.right_lower_right_switch_pressed
+
+        self.right_upper_right_switch_pressed = (
+            msg.right_lower_left_switch and not self.right_upper_right_switch
+        ) or self.right_upper_right_switch_pressed
 
         self.right_stick = msg.right_stick
         self.left_stick = msg.left_stick
@@ -367,7 +417,6 @@ class StateEstimator:
         msg = command_lcmt.decode(data)
         self.command = msg.command
 
-    
     def _receive_upper_dof_pos(self, channel, data):
         msg = ref_upper_dof_pos_lcmt.decode(data)
         # print(f"Received ref_upper_dof_pos: {msg.ref_upper_dof_pos}")
@@ -387,13 +436,12 @@ class StateEstimator:
                 else:
                     continue
                 # if nrfds:
-                    # self.new_lcm.handle()
+                # self.new_lcm.handle()
                 # else:
                 #     continue
 
         except KeyboardInterrupt:
             pass
-
 
     def spin(self):
         self.run_thread = threading.Thread(target=self.poll, daemon=False)

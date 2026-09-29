@@ -2,10 +2,10 @@ import unittest
 
 import numpy as np
 
-from deploy.g1_gym_deploy.lcm_types.motor_safety_state_lcmt import (
+from thor_deploy.lcm_types.motor_safety_state_lcmt import (
     motor_safety_state_lcmt,
 )
-from deploy.g1_gym_deploy.utils.motor_safety_monitor import MotorSafetyMonitor
+from thor_deploy.utils.motor_safety_monitor import MotorSafetyMonitor
 
 
 class MotorSafetyMonitorTests(unittest.TestCase):

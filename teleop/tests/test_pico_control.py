@@ -10,7 +10,7 @@ TELEOP_DIR = Path(__file__).resolve().parents[1]
 REPO_DIR = TELEOP_DIR.parent
 if str(TELEOP_DIR) not in sys.path:
     sys.path.insert(0, str(TELEOP_DIR))
-DEPLOY_DIR = REPO_DIR / "deploy/g1_gym_deploy"
+DEPLOY_DIR = REPO_DIR / "src"
 if str(DEPLOY_DIR) not in sys.path:
     sys.path.insert(0, str(DEPLOY_DIR))
 
@@ -20,7 +20,7 @@ from xrobot_teleop_to_pose_zmq_server import (
     PicoControllerMapper,
     UpperTeleopStateMachine,
 )
-from utils.rc_command_source import resolve_rc_command_source
+from thor_deploy.utils.rc_command_source import resolve_rc_command_source
 
 
 class _FakeLCM:
@@ -249,7 +249,7 @@ class UpperTeleopStateMachineTest(unittest.TestCase):
 class RCCommandWireTest(unittest.TestCase):
     def test_teleop_encoding_is_compatible_with_deploy_type(self):
         deploy_type_path = (
-            REPO_DIR / "deploy/g1_gym_deploy/lcm_types/rc_command_lcmt.py"
+            REPO_DIR / "src/thor_deploy/lcm_types/rc_command_lcmt.py"
         )
         spec = importlib.util.spec_from_file_location("deploy_rc_command_lcmt", deploy_type_path)
         module = importlib.util.module_from_spec(spec)

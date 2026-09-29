@@ -3,37 +3,69 @@ import time
 import lcm
 import numpy as np
 import torch
-from utils.cheetah_state_estimator import StateEstimator
-from lcm_types.pd_tau_targets_lcmt import pd_tau_targets_lcmt
-from lcm_types.arm_action_lcmt import arm_action_lcmt
-from utils.command_profile import RCControllerProfile
-from lcm_types.body_record_lcmt import body_record_lcmt
-from utils.pose_target import build_position_target
-lc = lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
+from thor_deploy.utils.cheetah_state_estimator import StateEstimator
+from thor_deploy.lcm_types.pd_tau_targets_lcmt import pd_tau_targets_lcmt
+from thor_deploy.lcm_types.arm_action_lcmt import arm_action_lcmt
+from thor_deploy.utils.command_profile import RCControllerProfile
+from thor_deploy.lcm_types.body_record_lcmt import body_record_lcmt
+from thor_deploy.utils.pose_target import build_position_target
 
 
-class LCMAgent():
-    def __init__(self, se:StateEstimator, command_profile: RCControllerProfile):
+class LCMAgent:
+    def __init__(
+        self, se: StateEstimator, command_profile: RCControllerProfile, lc=None
+    ):
+        self.lc = lc if lc is not None else lcm.LCM("udpm://239.255.76.67:7667?ttl=255")
         self.se = se
         self.command_profile = command_profile
 
-        self.dt = 1/50
+        self.dt = 1 / 50
         self.timestep = 0
 
         self.num_envs = 1
         self.num_dofs = 29
-        self.num_obs = 115 # 91
+        self.num_obs = 115  # 91
         self.num_history_length = 5
         self.num_lower_dofs = 15
         self.num_commands = 8
-        self.device = 'cuda:0'
+        self.device = "cuda:0"
 
         # Deployment default pose.  The upper-body entries (15:29) are zero
         # and match g1_29dof_waist_fakehand_tug_zero_upper_v1.yaml.
-        self.default_dof_pos = np.array([-0.1000,  0.0000,  0.0000,  0.3000, -0.2000,  0.0000, -0.1000,  0.0000,
-         0.0000,  0.3000, -0.2000,  0.0000,  0.0000,  0.0400,  0.0800,  0.0000,
-         0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,  0.0000,
-         0.0000,  0.0000,  0.0000, 0.0000,  0.0000], dtype=np.float64)
+        self.default_dof_pos = np.array(
+            [
+                -0.1000,
+                0.0000,
+                0.0000,
+                0.3000,
+                -0.2000,
+                0.0000,
+                -0.1000,
+                0.0000,
+                0.0000,
+                0.3000,
+                -0.2000,
+                0.0000,
+                0.0000,
+                0.0400,
+                0.0800,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+                0.0000,
+            ],
+            dtype=np.float64,
+        )
         # self.p_gains = np.array([150., 150., 150., 300.,  40.,  40., 150., 150., 150., 300.,  40.,  40., 300., 200., 200., 200., 100.,  20.,  20.,  20., 200., 200., 200., 100., 20.,  20.,  20.], dtype=np.float)
         # self.d_gains = np.array([2.0000, 2.0000, 2.0000, 4.0000, 4.0000, 4.0000, 2.0000, 2.0000, 2.0000, 4.0000, 4.0000, 4.0000, 5.0000, 4.0000, 4.0000, 4.0000, 1.0000, 0.5000,0.5000, 0.5000, 4.0000, 4.0000, 4.0000, 1.0000, 0.5000, 0.5000, 0.5000], dtype=np.float)
 
@@ -55,19 +87,20 @@ class LCMAgent():
 
         self.joint_idxs = self.se.joint_idxs
 
-
     def get_obs(self):
         self.gravity_vector = self.se.get_gravity_vector()
         # self.projected_gravity = self.se.get_projected_gravity().cpu().numpy()
         # print('euler', self.se.get_rpy())
 
         # print("#$%#$%$#%$#", self.projected_gravity)
-        # 
-        cmds = np.array([[0.0000, 0.7500, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000]])   #  原地不动的命令
+        #
+        cmds = np.array(
+            [[0.0000, 0.7500, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0000]]
+        )  #  原地不动的命令
         cmds[:, :] = self.command_profile.get_command(self.timestep * self.dt)
 
         # cmds[:, 4] = 1
-        
+
         self.commands[:, :] = cmds
         # self.commands[:, :] = self.se.get_command()
 
@@ -75,7 +108,7 @@ class LCMAgent():
 
         # body_record = body_record_lcmt()
         # body_record.q = self.dof_pos
-        # lc.publish("body_data_record", body_record.encode())
+        # self.lc.publish("body_data_record", body_record.encode())
         self.dof_vel = self.se.get_dof_vel()
         self.body_angular_vel = self.se.get_body_angular_vel()
         actions = self.actions.reshape(1, -1).to("cuda:0")
@@ -86,28 +119,31 @@ class LCMAgent():
         # print("dof_pos: ", self.dof_pos - self.default_dof_pos)
         # print("dof_vel: ", self.dof_vel * 0.05)
         # print("projected_gravity: ", self.gravity_vector)
-        
-        
+
         ########  双臂张开的初始位姿
-        # self.ref_upper_dof_pos = [[0.0000, 0.5000,  0.0000,  1.3000,  0.0000,  0.0000, -0.4000,  
+        # self.ref_upper_dof_pos = [[0.0000, 0.5000,  0.0000,  1.3000,  0.0000,  0.0000, -0.4000,
         #                            0.0000, -0.5000, 0.0000,  1.3000,  0.0000, 0.0000,  0.4000]]  ## 一套较为稳定的ref_upper_dof_pos参数
-        
+
         ########  跟踪avp的数据
         self.ref_upper_dof_pos = self.se.get_upper_dof_pos().reshape(1, -1)
 
         self.ref_upper_dof_pos = np.clip(self.ref_upper_dof_pos, -2, 2)
 
-        ob = np.concatenate((
-                            actions.cpu().detach().numpy().reshape(1, -1)[:, :],   #  29
-                            self.body_angular_vel.reshape(1, -1) * 0.25,   # 3
-                            self.commands[:, :] * np.array([1.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]), # 8
-                            (self.dof_pos - self.default_dof_pos).reshape(1, -1),   #  29
-                            self.dof_vel.reshape(1, -1) * 0.05,   # 29
-                            self.gravity_vector.reshape(1, -1),  # 3
-                            # self.projected_gravity,   # 3
-                            self.ref_upper_dof_pos   #  14
-                             ), axis=1)
-        
+        ob = np.concatenate(
+            (
+                actions.cpu().detach().numpy().reshape(1, -1)[:, :],  #  29
+                self.body_angular_vel.reshape(1, -1) * 0.25,  # 3
+                self.commands[:, :]
+                * np.array([1.0, 2.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]),  # 8
+                (self.dof_pos - self.default_dof_pos).reshape(1, -1),  #  29
+                self.dof_vel.reshape(1, -1) * 0.05,  # 29
+                self.gravity_vector.reshape(1, -1),  # 3
+                # self.projected_gravity,   # 3
+                self.ref_upper_dof_pos,  #  14
+            ),
+            axis=1,
+        )
+
         # ############  修改   ##############
         # ob = [[-1.2484e+00, -5.4190e-01, -5.7630e-02,  1.5684e+00,  5.9251e-01,
         # -1.6871e-01, -1.1549e+00,  4.8243e-01, -2.5243e-01,  1.6376e+00,
@@ -136,10 +172,10 @@ class LCMAgent():
         # print('<<=======  ob  ========>>', ','.join(map(str, ob[0])))
 
         # print('@@@@@@#$%@#%$$——————gravity_vector', self.gravity_vector.reshape(1, -1))
-        
+
         return torch.tensor(ob, device=self.device).float()
 
-    def publish_action(self, action, hard_reset=False, init = False):
+    def publish_action(self, action, hard_reset=False, init=False):
         action = action.cpu().numpy()
         command_for_robot = pd_tau_targets_lcmt()
         scaled_pos_target = build_position_target(
@@ -149,12 +185,10 @@ class LCMAgent():
             init=init,
         )
 
-
         # print('shape', scaled_pos_target.shape, self.ref_upper_dof_pos.shape)
         ########  shape (1, 29) (1, 14)
 
-
-        # torques = (scaled_pos_target - self.dof_pos[:12]) * self.p_gains[:12]  - self.dof_vel[:12] * self.d_gains[:12]   
+        # torques = (scaled_pos_target - self.dof_pos[:12]) * self.p_gains[:12]  - self.dof_vel[:12] * self.d_gains[:12]
         # torques = np.clip(torques[:12], -self.torque_limit[:12], self.torque_limit[:12])
         self.joint_pos_target[:29] = scaled_pos_target[:29]
 
@@ -167,8 +201,7 @@ class LCMAgent():
         # self.torques[:12] = torques[:12]
         # print("torques: ", torques)
         # print("==============================================================================")
-        # self.torques[15:] = torques[13:] 
-
+        # self.torques[15:] = torques[13:]
 
         command_for_robot.q_des = self.joint_pos_target
         ##########  修改：将输出规定在初始化位置，调试机器人用   ###########
@@ -179,15 +212,14 @@ class LCMAgent():
         # print('publish')
         #############################################################
 
-
         command_for_robot.tau_ff = self.torques
-        command_for_robot.timestamp_us = int(time.time() * 10 ** 6)
+        command_for_robot.timestamp_us = int(time.time() * 10**6)
         # print('1111111111111111&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
-        lc.publish("pd_plustau_targets", command_for_robot.encode())
+        self.lc.publish("pd_plustau_targets", command_for_robot.encode())
         # print('&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&')
         # arm_action = arm_action_lcmt()
         # arm_action.act = arm_actions
-        # lc.publish("new_arm_action", arm_action.encode())
+        # self.lc.publish("new_arm_action", arm_action.encode())
 
     def reset(self):
         self.se.reset_command_targets()
@@ -197,8 +229,7 @@ class LCMAgent():
         self.timestep = 0
         return self.get_obs()
 
-
-    def step(self, actions, hard_reset=False, init = False):
+    def step(self, actions, hard_reset=False, init=False):
         # Match the training environment's robot.control.action_clip_value.
         # The actor head is linear, so an unbounded deployment clip can turn
         # an out-of-distribution observation into a huge position target.
@@ -209,12 +240,12 @@ class LCMAgent():
         # print('&&&&&&&&&&actions', actions, actions.size())
 
         self.actions = torch.clip(actions[0:1, :], -clip_actions, clip_actions)
-        self.publish_action(self.actions, hard_reset=hard_reset, init = init)
+        self.publish_action(self.actions, hard_reset=hard_reset, init=init)
         time.sleep(max(self.dt - (time.time() - self.time), 0))
-        if self.timestep % 100 == 0: print(f'frq: {1 / (time.time() - self.time)} Hz');
+        if self.timestep % 100 == 0:
+            print(f"frq: {1 / (time.time() - self.time)} Hz")
         self.time = time.time()
         obs = self.get_obs()
-
 
         self.timestep += 1
         return obs

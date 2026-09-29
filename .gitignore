@@ -1,8 +1,21 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 *.egg-info/
+.pytest_cache/
+.venv/
+venv/
+# CMake / package artifacts
 build/
+dist/
+# Runtime data
 logs/
 recordings/
-.pytest_cache/
 MUJOCO_LOG.TXT
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+.DS_Store

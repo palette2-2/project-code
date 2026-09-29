@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from deploy.g1_gym_deploy.utils.rc_command_mapping import (
+from thor_deploy.utils.rc_command_mapping import (
     BaseHeightVelocityController,
     BodyYawRateWithHeadingHoldController,
     WaistYawVelocityController,

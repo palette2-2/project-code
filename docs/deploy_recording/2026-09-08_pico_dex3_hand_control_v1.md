@@ -16,7 +16,7 @@
 PICO / XRoboToolkit
   → teleop/xrobot_teleop_to_pose_zmq_server.py
   → hand_action LCM（左手 7 维 + 右手 7 维）
-  → deploy/unitree_sdk2/hand_control.cpp
+  → cpp/hand_control.cpp
   → rt/dex3/left/cmd、rt/dex3/right/cmd DDS
   → Dex3-1
 ```
@@ -114,14 +114,14 @@ python -m pip install -r teleop/requirements.txt
 编译机器人端 `hand_control`：
 
 ```bash
-cmake -S deploy/unitree_sdk2 -B deploy/unitree_sdk2/build
-cmake --build deploy/unitree_sdk2/build --target hand_control -j
+cmake -S . -B build
+cmake --build build --target hand_control -j
 ```
 
 生成的程序位于：
 
 ```text
-deploy/unitree_sdk2/build/bin/hand_control
+build/bin/hand_control
 ```
 
 ## 部署命令
@@ -132,7 +132,7 @@ URL 必须一致，并且网络需要允许 UDP multicast。
 ### 1. 机器人端启动 Dex3
 
 ```bash
-cd deploy/unitree_sdk2/build/bin
+cd build/bin
 LCM_DEFAULT_URL='udpm://239.255.76.67:7667?ttl=255' ./hand_control
 ```
 
@@ -151,7 +151,7 @@ LCM_DEFAULT_URL='udpm://239.255.76.67:7667?ttl=255' ./hand_control custom_hand_a
 另开终端，根据实机网卡选择 `eth0` 或 `eth1`：
 
 ```bash
-cd deploy/unitree_sdk2/build/bin
+cd build/bin
 ./g1_control eth0
 ```
 
@@ -184,8 +184,7 @@ XR、ZMQ、LCM 和可视化参数。
 ### 4. 机器人端启动策略
 
 ```bash
-cd deploy/g1_gym_deploy
-RC_COMMAND_SOURCE=pico python scripts/deploy_policy.py
+bash scripts/run_policy.sh --rc-source pico
 ```
 
 ### 5. 开始操作
@@ -221,8 +220,8 @@ PUBLISH_DEX3_HAND=0 ./teleop_pose_50hz.sh
 
 ```bash
 python -m unittest discover -s teleop/tests -p 'test_*.py' -v
-python -m pytest tests/test_deploy_rc_command_mapping.py -q
-cmake --build deploy/unitree_sdk2/build --target hand_control -j
+bash scripts/test.sh policy
+cmake --build build --target hand_control -j
 ```
 
 测试覆盖 A/X 独立上升沿切换、release-to-arm、平滑插值、断联冻结、配置校验、

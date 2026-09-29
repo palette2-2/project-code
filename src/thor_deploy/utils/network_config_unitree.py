@@ -5,6 +5,7 @@ import netifaces
 import sys
 import subprocess
 
+
 def get_saved_interface_name():
     home = expanduser("~")
     name = ""
@@ -14,6 +15,7 @@ def get_saved_interface_name():
     except:
         name = ""
     return name
+
 
 def get_likely_iface():
     ifs = netifaces.interfaces()
@@ -25,7 +27,7 @@ def get_likely_iface():
         if_to_addrs[i] = []
         if netifaces.AF_INET in netifaces.ifaddresses(i).keys():
             for ad in netifaces.ifaddresses(i)[netifaces.AF_INET]:
-                if_to_addrs[i].append(ad['addr'])
+                if_to_addrs[i].append(ad["addr"])
 
     for i in range(len(ifs)):
         print("  [{}] : {} : {}".format(i, ifs[i], if_to_addrs[ifs[i]]))
@@ -35,12 +37,17 @@ def get_likely_iface():
 
     for i in ifs:
         match_string = "192.168.123."
-        if len(if_to_addrs[i]) > 0 and if_to_addrs[i][0][:len(match_string)] == match_string:
+        if (
+            len(if_to_addrs[i]) > 0
+            and if_to_addrs[i][0][: len(match_string)] == match_string
+        ):
             found_10_ip = found_10_ip + 1
             selected_if = i
 
     if found_10_ip == 0:
-        print("None of the network adapters look correct. Make sure you have set a 10.0.0.x static ip!")
+        print(
+            "None of the network adapters look correct. Make sure you have set a 10.0.0.x static ip!"
+        )
         return ""
 
     elif found_10_ip == 1:
@@ -50,7 +57,8 @@ def get_likely_iface():
     else:
         print("Found {} possible adapters, giving up".format(found_10_ip))
         return ""
-    
+
+
 def main():
     name = get_saved_interface_name()
     if not name:
@@ -62,8 +70,21 @@ def main():
         print("Found saved interface {}".format(name))
 
     print("Setup for interface {}".format(name))
-    subprocess.call(['sudo', 'ifconfig', name, 'multicast'])
-    subprocess.call(['sudo', 'route', 'add', '-net', '224.0.0.0', 'netmask', '240.0.0.0', 'dev', name])
+    subprocess.call(["sudo", "ifconfig", name, "multicast"])
+    subprocess.call(
+        [
+            "sudo",
+            "route",
+            "add",
+            "-net",
+            "224.0.0.0",
+            "netmask",
+            "240.0.0.0",
+            "dev",
+            name,
+        ]
+    )
+
 
 if __name__ == "__main__":
     main()

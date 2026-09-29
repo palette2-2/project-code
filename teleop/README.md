@@ -1,284 +1,123 @@
-# Teleop Bridge Setup Guide
+# PICO / GMR teleoperation
 
-This README is for a user who wants to run the live teleoperation bridge on their own Ubuntu machine.
+[English overview](../README.md) | [中文使用说明](../README.zh-CN.md)
 
-If you follow this file from top to bottom, you should end up with:
+This optional bridge sends upper-body references, PICO remote commands and Dex3
+hand targets to Thor Deploy over LCM. It also exposes ZMQ outputs for external
+motion consumers; no external `sim2real` repository is required by Thor Deploy.
 
-1. a working Python environment for the teleop bridge,
-2. GMR installed for live retargeting,
-3. XRoboToolkit PC service installed on the host machine,
-4. the XRoboToolkit Python binding installed,
-5. the PICO headset configured and connected,
-6. the teleop ZMQ bridge running and ready to feed `sim2real`.
-
-## What this bridge does
-
-The runtime in this folder does four things:
-
-1. read live body and controller data from XRoboToolkit / PICO,
-2. retarget the incoming human motion to Unitree G1 with GMR,
-3. publish retargeted pose chunks over ZMQ so that `sim2real/src/motion_sources.py` can consume them,
-4. publish the controlled 14-DoF upper-body reference and optional PICO remote
-   commands over LCM for the `thor1-tug` deploy stack.
-
-The included files are:
-
-- `xrobot_teleop_to_pose_zmq_server.py`
-- `default_mimic_obs.py`
-- `teleop_pose_50hz.sh`
-- `lcm_types/ref_upper_dof_pos_lcmt.lcm`
-- `lcm_types/ref_upper_dof_pos_lcmt.py`
-- `lcm_types/rc_command_lcmt.lcm`
-- `lcm_types/rc_command_lcmt.py`
-- `requirements.txt`
-
-## Before you start
-
-Use Ubuntu 22.04 / 24.04 if possible.
-
-You need:
-
-- this repository already checked out on your machine,
-- Conda installed,
-- a PICO headset with leg trackers,
-- XRoboToolkit client installed on the PICO,
-- XRoboToolkit PC service installed on the Ubuntu host,
-- motion trackers/controllers paired and calibrated on the PICO side.
-
-In the commands below, define one working directory for all external dependencies:
-
-```bash
-export TELEOP_WORKSPACE=$HOME/teleop_ws
-mkdir -p "$TELEOP_WORKSPACE"
-```
-
-## Step 1. Create the teleop Python environment
-
-Create a dedicated Python 3.10 environment for the teleop bridge.
+## 1. Prepare a separate environment
 
 ```bash
 conda create -n gmr_axell python=3.10 -y
 conda activate gmr_axell
+# From the Thor Deploy repository root:
+export THOR_DEPLOY_ROOT="$PWD"
+python -m pip install -r teleop/requirements.txt
+export TELEOP_WORKSPACE="$HOME/teleop_ws"
+mkdir -p "$TELEOP_WORKSPACE"
 ```
 
-This matches TWIST2 setup, where live teleoperation and GMR run in a Python 3.10 environment separate from the low-level deployment stack.
+A desktop/OpenGL environment is needed by the default visualization launcher.
+Install the appropriate build tools, Python headers, OpenGL/EGL libraries and
+`pybind11` for your host. Use the upstream projects' instructions for platform
+packages; do not overwrite a working environment just to rename it.
 
-## Step 2. Install host system dependencies
+## 2. Install GMR
 
-Install the build tools and runtime packages needed by GMR and the XRoboToolkit binding.
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    python3-dev \
-    python3-pip \
-    libgl1 \
-    libegl1 \
-    libxrender1 \
-    libxext6
-```
-
-Then install Conda-side helper packages used by the original setup:
-
-```bash
-conda activate gmr_axell
-conda install -c conda-forge libstdcxx-ng pybind11 -y
-```
-
-## Step 3. Install GMR
-
-Clone and install GMR into the same `gmr` environment.
+The tested GMR checkout was clean at the following revision:
 
 ```bash
 cd "$TELEOP_WORKSPACE"
 git clone https://github.com/YanjieZe/GMR.git
 cd GMR
-pip install -e .
+git checkout a2c0f50714376061f93b953bf38dd6e19d0c88d3
+python -m pip install -e .
 ```
 
-The bridge in this folder also needs `pyzmq`, so install it explicitly:
+[GMR's installation guide](https://github.com/YanjieZe/GMR) covers its external
+requirements. The bridge uses `src_human="xrobot"`, `tgt_robot="unitree_g1"`;
+robot XML/meshes and the corresponding IK configuration come from GMR.
 
-```bash
-pip install pyzmq
-```
+## 3. Install XRoboToolkit service and headset client
 
-## Step 4. Install XRoboToolkit PC service on Ubuntu
+Follow the upstream installation instructions for
+[XRoboToolkit PC Service](https://github.com/XR-Robotics/XRoboToolkit-PC-Service)
+and the [Unity/PICO client](https://github.com/XR-Robotics/XRoboToolkit-Unity-Client).
+Select a service build matching your operating system and architecture.
+The headset, host and robot need the required network connectivity; LCM uses UDP
+multicast between the bridge and controllers. Start the PC Service, pair/calibrate
+the trackers, and connect the headset client to the host.
 
-According to the original TWIST2 instructions, you can either:
+## 4. Build a callback-enabled Python binding
 
-- install the Ubuntu `.deb` package from the XRoboToolkit PC service release page
-    ```bash
-    cd "$TELEOP_WORKSPACE"
-    wget https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases/download/v1.0.0/XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb
-    sudo dpkg -i XRoboToolkit_PC_Service_1.0.0_ubuntu_22.04_amd64.deb
-    ```
-- build the PC service from [source](https://github.com/XR-Robotics/XRoboToolkit-PC-Service/releases).
-
-After installation, start the PC service application from the Ubuntu application launcher before you start teleoperation.
-
-## Step 5. Build and install the XRoboToolkit Python binding
-
-The teleop bridge uses `XRobotStreamer`, and `XRobotStreamer` depends on the Python module `xrobotoolkit_sdk`.
-
-### 5.1 Clone the binding repository
+An unpatched binding may import successfully but still lack the APIs this bridge
+requires. The supplied patch reproduces the tested local callback implementation.
+Use a fresh dependency checkout and the recorded base revision:
 
 ```bash
 cd "$TELEOP_WORKSPACE"
-git clone https://github.com/Axellwppr/XRoboToolkit-PC-Service-Pybind
+git clone https://github.com/Axellwppr/XRoboToolkit-PC-Service-Pybind.git
 cd XRoboToolkit-PC-Service-Pybind
+git checkout 75cb1130ac63e76d8f7e7788049be415e8be44f2
+git apply --check "$THOR_DEPLOY_ROOT/third_party/patches/xrobotoolkit-frame-callback.patch"
+git apply "$THOR_DEPLOY_ROOT/third_party/patches/xrobotoolkit-frame-callback.patch"
 ```
 
-### 5.2 Build the underlying XRoboToolkit native SDK
+Build the native SDK and copy its headers/library following the binding's
+[upstream build instructions](https://github.com/Axellwppr/XRoboToolkit-PC-Service-Pybind).
+The original layout uses:
 
 ```bash
+# From XRoboToolkit-PC-Service-Pybind:
 mkdir -p tmp
 cd tmp
 git clone https://github.com/XR-Robotics/XRoboToolkit-PC-Service.git
 cd XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK
 bash build.sh
 cd ../../../..
-```
-
-### 5.3 Copy the built headers and shared library into the pybind repo
-
-Run the following from inside `XRoboToolkit-PC-Service-Pybind`:
-
-```bash
-mkdir -p lib
-mkdir -p include
+mkdir -p lib include
 cp tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/PXREARobotSDK.h include/
-cp -r tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/nlohmann include/nlohmann/
+cp -r tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/nlohmann include/
 cp tmp/XRoboToolkit-PC-Service/RoboticsService/PXREARobotSDK/build/libPXREARobotSDK.so lib/
+python -m pip install pybind11
+python -m pip install . --no-build-isolation
 ```
 
-### 5.4 Install the Python module
+The patch/base reconstruction was tested locally; a clean build of all external
+services on a new machine was not performed. Those projects may have additional
+platform-specific native-library requirements.
 
-Still inside `XRoboToolkit-PC-Service-Pybind`:
+## 5. Check dependencies without starting streams
 
 ```bash
-conda activate gmr_axell
-pip uninstall -y xrobotoolkit_sdk
-python setup.py install
+cd "$THOR_DEPLOY_ROOT"
+python scripts/check_teleop.py
+bash scripts/test.sh teleop
 ```
 
-## Step 6. Verify the Python environment
+The check loads the binding, validates its three callback APIs, initializes the
+GMR G1 model/IK configuration, and validates Dex3 poses. It does not initialize
+XR streaming, connect to PICO, open LCM sockets or publish motor commands.
 
-Before touching the headset, verify that the required Python modules import correctly.
+## 6. Start the bridge
+
+After the robot-side controllers are prepared as described in the root README:
 
 ```bash
-conda activate gmr_axell
-python - <<'PY'
-import general_motion_retargeting
-import xrobotoolkit_sdk
-import zmq
-print("general_motion_retargeting: OK")
-print("xrobotoolkit_sdk: OK")
-print("pyzmq: OK")
-PY
+cd "$THOR_DEPLOY_ROOT"
+ACTUAL_HUMAN_HEIGHT=1.6 PUBLISH_DEX3_HAND=1 bash teleop/teleop_pose_50hz.sh
 ```
 
-If this fails, do not continue. Fix the environment first.
+Use your actual height. The initial height alignment expects a stable standing
+pose. Omit `PUBLISH_DEX3_HAND=1` when not controlling the hands. Keep the default
+LCM URL/channels consistent with the robot processes.
 
-## Step 7. Install and prepare the PICO side
+The optional ZMQ channels are `tcp://*:28701` (requests), `tcp://*:28702`
+(replies), and `tcp://*:28703` (controller status). The bridge publishes LCM at
+50 Hz independently of whether a ZMQ consumer is connected.
 
-Install the PICO-side app from:
-
-- `https://github.com/XR-Robotics/XRoboToolkit-Unity-Client/releases/`
-
-Then prepare the headset as follows:
-
-1. Put on the motion trackers.
-2. Put the controllers on the wrists.
-3. Start VR on the headset.
-4. Calibrate the whole-body motion tracking.
-5. Open the XRoboToolkit / XRobot app on the headset.
-6. Connect the app to the IP address of your Ubuntu host.
-7. Start streaming whole-body data.
-8. Start streaming controller data.
-
-The PC and the PICO headset must be able to reach each other over the network.
-
-In practice, that means:
-
-- they are on the same LAN, and
-- the PICO can route to the Ubuntu host IP you entered in the app.
-- Note: ensure the communication link from the PC to the PICO is stable and has minimal packet loss; otherwise motion jitter may occur.
-- Note: if you are using `iptables/nftables/ufw` on the Ubuntu host, make sure to allow incoming connections.
-- Note: if you are using `VPN/TUN` interface, stop the `VPN/TUN` while teleop, or make sure it is configured to allow the PICO to reach the host IP.
-- Note: if `http_proxy` and `https_proxy` environment variables are set on the Ubuntu host, make sure have `127.0.0.1` in the `no_proxy` variable, or unset the proxy variables while teleop.
-
-## Step 8. Verify that XR data is arriving
-
-Once the PC service is running and the PICO is connected, verify that the Python binding can see the stream.
-
-```bash
-conda activate gmr_axell
-python - <<'PY'
-import xrobotoolkit_sdk as xrt
-
-xrt.init()
-print("Body data available:", xrt.is_body_data_available())
-print("Headset pose:", xrt.get_headset_pose())
-print("Left controller pose:", xrt.get_left_controller_pose())
-print("Right controller pose:", xrt.get_right_controller_pose())
-xrt.close()
-PY
-```
-
-If body data is not available, the XRoboToolkit binding README suggests checking:
-
-1. the PICO headset is connected,
-2. the trackers are connected and calibrated,
-3. full body tracking is enabled on the PICO side client.
-
-## Step 9. Run the teleop bridge
-
-Once the environment and XR data stream are ready, start the ZMQ teleop bridge from this repository.
-
-```bash
-conda activate gmr_axell
-cd /home/hongwu/thor1-tug/thor-deploy/teleop
-bash teleop_pose_50hz.sh
-```
-
-This starts a server that matches the `sim2real` tracking configuration:
-
-- request socket: `tcp://*:28701`
-- reply socket: `tcp://*:28702`
-- controller socket: `tcp://*:28703`
-- chunk size: `1` frame per reply
-- control publish rate: `50 Hz`
-
-Important: During the first few seconds after starting the script, remain in a stable standing posture. The script adjusts the z-axis offset based on foot height; if you are in another pose, the estimated z-offset may affect gait quality.
-
-## Runtime workflow
-
-At runtime, the teleop bridge acts as a chunked motion supplier for `sim2real`.
-
-The high-level flow is:
-
-1. `sim2real` maintains its own reference-motion buffer.
-2. The tracking policy consumes that buffer one control step at a time.
-3. When the future horizon in the buffer drops below its low-water mark, `sim2real` sends a ZMQ request asking for more frames.
-4. This teleop bridge samples the latest XRoboToolkit body stream, retargets it to `unitree_g1` with GMR, and returns a small chunk of future frames.
-5. `sim2real` appends those frames into its reference buffer and continues policy rollout.
-
-More concretely:
-
-- `sim2real` is the active side for motion fetching. It does not wait for a continuous push stream; it requests more reference frames when needed.
-- The bridge exposes three ZMQ channels:
-  - request channel: receives frame requests from `sim2real`
-  - reply channel: sends retargeted pose chunks back
-  - control channel: publishes XR controller button state
-- The reply payload contains `root_pos`, `root_quat`, and `dof_pos` for each returned frame.
-- On a teleop start event, `sim2real` uses the first returned frame to align the live XR reference stream to its current anchor pose, then blends into the live stream.
-- During steady-state teleop, `sim2real` keeps the buffer above its waterline by repeatedly requesting new chunks before the future horizon runs out.
-- The bridge may interpolate between the previously sent pose and the newest retargeted pose for non-start replies, which reduces discontinuities in the returned chunk.
-
-## Thor1-tug PICO full-body control
+## PICO control reference
 
 The bridge can publish three independent LCM streams at `--ctrl_fps` (normally 50 Hz):
 
@@ -330,8 +169,9 @@ because `teleop_pose_50hz.sh` is running.
 - Pressing B without a fresh pose leaves the upper body paused and prints one
   notice for that button press.
 
-GMR continues updating while paused, so moving the hands during a pause is safe;
-the next resume uses a fresh moving target and transitions smoothly. The ZMQ
+GMR continues updating while paused. The next resume uses a fresh moving
+target and interpolates from the held reference; check the resulting motion on
+your hardware before operation. The ZMQ
 controller payload keeps the compatible `controller_buttons` field and adds:
 
 ```json
@@ -367,9 +207,8 @@ g1_control
 Unitree remote:
 
 ```bash
-cd deploy/g1_gym_deploy
-RC_COMMAND_SOURCE=unitree python scripts/deploy_policy.py
-RC_COMMAND_SOURCE=pico python scripts/deploy_policy.py
+bash scripts/run_policy.sh --rc-source unitree
+bash scripts/run_policy.sh --rc-source pico
 ```
 
 Do not switch sources while the deploy process is running. Safely stop it and
@@ -409,7 +248,7 @@ Install the extra Python dependency before starting:
 
 ```bash
 conda activate gmr_axell
-pip install -r requirements.txt
+python -m pip install -r teleop/requirements.txt
 ```
 
 Validate new mappings first with motors disabled, then with the robot suspended,

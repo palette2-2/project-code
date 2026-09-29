@@ -1,81 +1,232 @@
 # Thor Deploy
 
-从 thor1-tug 提取的独立实机部署目录，包含 G1 身体控制、Dex3 手部控制、PICO 遥操作和唯一的 0909 ONNX。无需原训练仓库，也无需安装 humanoidverse / Isaac Gym。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-## 目录
+A standalone deployment stack for **Unitree G1 (29 DoF)**, with ONNX policy
+inference, Unitree remote control, optional PICO upper-body teleoperation, and
+**Dex3-1** hand control. It runs independently of the training repository and does
+not require Isaac Gym or `humanoidverse`.
 
-- `deploy/g1_gym_deploy/`：策略推理、状态估计、遥控映射、电机监测和 LCM 类型。
-- `deploy/unitree_sdk2/`：完整 SDK、DDS 库、`g1_control.cpp` 和 `hand_control.cpp`。
-- `teleop/`：PICO/GMR 桥接、Dex3 手势配置及录制工具。
-- `checkpoints/0909/model_10000.onnx`：20260909_232620 导出的策略；来源和 SHA256 在同目录 `manifest.json`。
-- `scripts/`：编译、启动和不连接硬件的离线检查。
-- `tests/`、`teleop/tests/`：部署和遥操作测试。
+The included baseline is the **0909 `model_10000.onnx`** policy. Training code,
+training environments and other checkpoints are outside this repository.
 
-保留了原项目的 `deploy/` 层级。原始许可证及第三方说明保留在对应目录。
+> Publication preparation is in progress. Inherited license statements conflict,
+> and the release terms for project additions and weights are not yet specified.
+> See [licensing status](LICENSE.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
-## 本机直接使用
+## What is included
 
-当前机器已有 `thor1-tug-deploy`（策略）和 `gmr_axell`（遥操作）Conda 环境，可以继续使用，无需重新安装，也无需修改旧仓库的 editable install。入口会优先导入本目录的代码。
+- A 50 Hz deployment loop: 115-dimensional observations, five-frame history
+  (575 inputs), and 29 joint actions.
+- C++ body and hand controllers using Unitree SDK2 and LCM.
+- Selection of exactly one remote-command source: Unitree or PICO.
+- PICO/GMR upper-body references, pause/resume blending and independent Dex3 toggles.
+- Motor torque/temperature telemetry, regression tests and a hardware-free
+  policy pipeline check.
 
-```bash
-cd /home/hongwu/thor1-tug/thor-deploy
-conda activate thor1-tug-deploy
-bash scripts/build_sdk.sh
-python scripts/check_offline.py
-python -m unittest discover -s tests -v
-
-conda activate gmr_axell
-python -m unittest discover -s teleop/tests -v
+```text
+Unitree remote ── g1_control ── LCM rc_command ─┐
+                                               ├─ Thor policy ── LCM ── g1_control ── G1
+PICO ── XRoboToolkit ── GMR bridge ── LCM ───────┘
+                              └─ hand_action ── hand_control ── Dex3
 ```
 
-离线检查使用真实策略、状态估计、历史观测及动作编码，LCM 替换为内存传输；不会连接或驱动机器人。分别检查 Unitree/PICO 两种来源，每种执行 100 步。需要 CUDA PyTorch，与原部署代码要求相同。
+The policy subscribes to one RC channel; the optional upper-body reference is a
+separate stream. ZMQ outputs are retained for external motion consumers but are
+not needed by the Thor policy.
 
-## 实机启动
+## Requirements
 
-先按既有实机流程关闭机器人原控制程序、确认网卡及控制权，再按顺序在独立终端启动。以下命令均从此仓库根目录执行；`eth0` 按机器人实际网卡替换。
+| Component | Requirement |
+| --- | --- |
+| Host | Linux; native build verified on Ubuntu x86_64 |
+| Policy runtime | Python 3.8+, CUDA-capable GPU, CUDA-enabled PyTorch, ONNX Runtime |
+| Native controllers | C++17, CMake 3.16+, pkg-config, LCM and yaml-cpp development packages |
+| Optional teleoperation | Separate Python 3.10 environment, GMR, callback-enabled XRoboToolkit binding, PC Service, PICO client and trackers |
+| Hardware | Compatible G1 29-DoF model; Dex3-1 when hand control is enabled |
 
-1. 身体控制：
+SDK libraries for x86_64 and aarch64 are included. Rebuild on the destination
+architecture; aarch64/Jetson operation was not validated in this preparation.
+Install a PyTorch build appropriate for that host before installing the runtime.
+ONNX Runtime may execute the actor on CPU; the surrounding deployment code still
+requires CUDA PyTorch.
 
-   ```bash
-   ./deploy/unitree_sdk2/build/bin/g1_control eth0
-   ```
+## Installation
 
-2. 使用 Dex3 时启动手部控制：
+Run commands from the repository root after cloning or downloading this repository.
+Use an existing compatible environment or create a new one:
 
-   ```bash
-   ./deploy/unitree_sdk2/build/bin/hand_control
-   ```
+```bash
+conda create -n thor-deploy python=3.10 -y
+conda activate thor-deploy
 
-3. 使用 PICO 时启动遥操作，`PUBLISH_DEX3_HAND=1` 启用手部输出：
+# Install CUDA-enabled PyTorch for your platform first, then:
+python -m pip install -e .
+# Equivalent dependency entry: python -m pip install -r requirements.txt
+```
 
-   ```bash
-   conda activate gmr_axell
-   PUBLISH_DEX3_HAND=1 bash teleop/teleop_pose_50hz.sh
-   ```
+On Ubuntu, install native build dependencies and compile:
 
-4. 启动策略，默认使用本目录的 0909 模型：
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cmake pkg-config liblcm-dev libyaml-cpp-dev
+bash scripts/build.sh
+```
 
-   ```bash
-   conda activate thor1-tug-deploy
-   RC_COMMAND_SOURCE=pico bash scripts/run_policy.sh
-   ```
+Outputs: `build/bin/g1_control` and `build/bin/hand_control`.
+Use `BUILD_JOBS=2 bash scripts/build.sh` to limit parallel compilation.
+An editable install keeps the default checkpoint relative to this checkout.
+For a non-editable package install, pass `--policy` explicitly; weights are not
+embedded in a Python wheel.
 
-   使用 Unitree 遥控器则改为：
+For optional PICO/GMR installation, follow [the teleoperation guide](teleop/README.md).
+It includes the required callback patch and an import/model check. GMR, the
+XRoboToolkit service and the headset client are external dependencies.
 
-   ```bash
-   RC_COMMAND_SOURCE=unitree bash scripts/run_policy.sh
-   ```
+## Validate before connecting hardware
 
-   策略也支持 `--policy /path/to/model.onnx` 或 `G1_POLICY_ONNX`，优先级为命令行、环境变量、内置 0909 路径。默认模型路径相对脚本定位，移动整个目录后依然有效。
+```bash
+# Policy environment: software tests, then real ONNX/CUDA inference without network I/O.
+bash scripts/test.sh policy
+python scripts/check_offline.py
 
-PICO 启动后先释放 grip/trigger/B；按 B 开启上肢跟随；R2 按策略终端提示校准/启动；A/X 控制右/左手开合。完整按键、断连行为和参数参见 `teleop/README.md`。手势配置为 `teleop/config/dex3_hand_poses.json`，与复制时原文件一致。运行日志由启动脚本固定写到本目录下 `logs/`。
+# Teleoperation environment:
+bash scripts/test.sh teleop
+python scripts/check_teleop.py
+```
 
-## 换机器安装
+The offline check substitutes in-memory LCM, verifies the checkpoint SHA256,
+and runs 100 observation/history/inference/action/message steps per RC source.
+It is a software integration check, not physics simulation or proof of stability.
+The teleop check loads dependencies and robot assets without starting XR streaming.
+See [validation evidence](VALIDATION.md) for the tested environment and limits.
 
-- C++ 编译需要 CMake、C++17 编译器、LCM 开发库及 yaml-cpp 头文件。在 Ubuntu 上对应 `build-essential cmake liblcm-dev libyaml-cpp-dev`。SDK 内含 x86_64 / aarch64 库；换架构时重新编译，勿直接沿用本机二进制。
-- 策略环境先安装适合目标机器的 CUDA PyTorch，再 `python -m pip install -r deploy/requirements.txt`。Jetson 使用其匹配的 PyTorch 构建。正常启动无需 `pip install -e`。
-- 遥操作使用单独的 Python 3.10 环境：`python -m pip install -r teleop/requirements.txt`，再按 `teleop/README.md` 安装 GMR、支持 callback API 的 XRoboToolkit binding、PC Service 和 PICO 客户端。
-- GMR、XRoboToolkit 和 Conda 环境属于机器的外部依赖，本目录不打包这些环境。本机继续使用 `/home/hongwu/teleop_ws/GMR`，它不依赖旧 thor1-tug 仓库。
-- 本次验证不包含真实机器人运动、PICO 实时追踪或网络连通性；实机联调仍需连接设备完成。
+## Run on hardware
 
-验证结果见 `VALIDATION.md`。
+Low-level control sends motor commands. Follow the robot's control-handover
+procedure, use physical support for initial checks, and keep the robot's stop
+control accessible. Start with small motion commands. Software tests do not
+replace checking joint mapping and motion on your hardware.
+
+Run each component in its own terminal, from the repository root. The body
+controller's interface argument must match the robot network interface.
+
+**1. Body controller**
+
+```bash
+./build/bin/g1_control eth0
+```
+
+**2. Dex3 controller — only if using the hands**
+
+```bash
+./build/bin/hand_control
+```
+
+The hand controller immediately sends the zero/open target at startup, then holds
+the last received target. A bridge disconnect does not automatically open the hands.
+
+**3. PICO bridge — only if using PICO**
+
+```bash
+conda activate gmr_axell  # Or your teleoperation environment.
+ACTUAL_HUMAN_HEIGHT=1.6 PUBLISH_DEX3_HAND=1 bash teleop/teleop_pose_50hz.sh
+```
+
+Set your actual height in metres. Omit `PUBLISH_DEX3_HAND=1` for body/arm-only use.
+The launcher enables visualization; it needs a working desktop/OpenGL environment.
+Keep a stable standing pose during initial height alignment.
+
+**4. Policy**
+
+```bash
+conda activate thor-deploy  # Or your existing policy environment.
+bash scripts/run_policy.sh --rc-source pico
+# For the Unitree remote instead:
+# bash scripts/run_policy.sh --rc-source unitree
+```
+
+The default RC source is `unitree`. `RC_COMMAND_SOURCE=pico` is also supported.
+Once installed, `thor-deploy --rc-source pico` is an equivalent CLI; its logs are
+relative to the current directory. The shell launcher anchors logs to this repository.
+Restart the policy to change sources.
+
+Release grip/trigger/B before operating PICO and follow the policy terminal's
+R2 calibration/start prompts. Upper-body following starts paused; enable it with
+B when ready. Release A/X once before using the hand toggles.
+
+| PICO input | Function |
+| --- | --- |
+| Left joystick | Planar motion |
+| Right joystick | Mode-dependent waist/yaw and height commands |
+| Right grip | R1: stand/step toggle |
+| Right trigger | R2: calibration/start/pause flow |
+| B | Pause/resume upper-body following, with a 0.5 s blend on resume |
+| A / X | Toggle right / left Dex3 open/closed targets |
+
+If controller input becomes stale while the bridge is running, it zeros RC
+commands and freezes upper-body/hand targets; rearming requires released buttons.
+This is not an end-to-end watchdog: if the bridge or network stops entirely, the
+body controller can retain the last command. Motor telemetry is monitoring, not
+an automatic emergency-stop mechanism.
+
+## Configuration
+
+| Setting | Default / meaning |
+| --- | --- |
+| `--policy` / `G1_POLICY_ONNX` | CLI > environment > `checkpoints/0909/model_10000.onnx` |
+| `--rc-source` / `RC_COMMAND_SOURCE` | CLI > environment > `unitree`; alternative `pico` |
+| `--lcm-url` / `LCM_DEFAULT_URL` | `udpm://239.255.76.67:7667?ttl=255` |
+| `ACTUAL_HUMAN_HEIGHT` | `1.6` metres; PICO launcher |
+| `PUBLISH_DEX3_HAND` | `0`; set `1` to publish hand targets |
+| `DEX3_POSE_CONFIG` | `teleop/config/dex3_hand_poses.json` |
+| `DEX3_HAND_TRANSITION_S` | `0.5` seconds |
+| `G1_SAFETY_LOG_DIR` | `logs/deploy_safety` |
+
+Set `LCM_DEFAULT_URL` identically in all processes if changing transport. The
+teleop launcher also accepts `LCM_URL`, which overrides that value locally.
+Changing a channel requires updating both publisher and subscriber.
+Dex3 pose JSON contains four seven-joint targets (`left_open`, `left_closed`,
+`right_open`, `right_closed`), in radians. The bundled closed targets approach
+joint limits; tune them for the actual hand/task after checking motion.
+
+## Repository layout
+
+```text
+src/thor_deploy/       Python policy, environments, control helpers and LCM types
+cpp/                  Project body/hand controllers and C++ LCM bindings
+third_party/          Vendored Unitree SDK2 and XRoboToolkit callback patch
+teleop/               Optional PICO bridge, hand configuration and recording tools
+checkpoints/0909/     Single ONNX baseline and provenance/checksum manifest
+scripts/              Build, launch, test and offline validation entry points
+tests/                Policy/control tests (teleop tests live in teleop/tests)
+docs/                 Detailed notes and retained upstream attribution
+licenses/             Retained licenses; see LICENSE.md for status
+```
+
+`scripts/build_sdk.sh` remains an alias for `scripts/build.sh`. The former
+`deploy/g1_gym_deploy/scripts/deploy_policy.py` path remains a compatibility
+wrapper; new integrations should use the public CLI or shell launcher.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| CUDA unavailable | Run `python -c "import torch; print(torch.cuda.is_available())"` in the policy environment; check the selected PyTorch build and driver. |
+| `thor_deploy` cannot be imported | Install from this root with `python -m pip install -e .`, or use `scripts/run_policy.sh`. |
+| No robot telemetry / controls | Verify the body-controller NIC, multicast routing/firewall and matching transport URLs/channels. |
+| Missing XR callback API | Apply the supplied binding patch and rebuild in the teleop environment; see `teleop/README.md`. |
+| PICO arm/hand buttons do nothing | Release buttons to arm; check B pause state and whether hand publishing is enabled. |
+| Missing native library after moving the checkout | Rebuild with `bash scripts/build.sh` on the destination host. |
+| Recorder conflicts with Dex3 | The recorder also uses A/X; do not run it concurrently with hand toggles. |
+
+## Development and attribution
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for test commands and change conventions.
+The repository includes an offline GitHub Actions workflow for tests and native
+compilation; real CUDA/hardware validation remains a separate local step.
+
+This integration builds on HOMIE, Walk These Ways, Unitree SDK2, GMR and
+XRoboToolkit. Original attribution and component licenses are retained in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). This is not an official release
+of those projects. Resolve the items in [LICENSE.md](LICENSE.md) before publishing.

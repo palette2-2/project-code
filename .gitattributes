@@ -1,0 +1,10 @@
+* text=auto
+*.py text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.onnx binary
+*.a binary
+*.so* binary
+# Preserve imported vendor bytes and patch context exactly.
+third_party/unitree_sdk2/** -text
+*.patch -text -whitespace

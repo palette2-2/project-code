@@ -1,0 +1,37 @@
+name: Offline checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  python:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            teleop/requirements.txt
+      - name: Install CPU test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -e . -r teleop/requirements.txt
+      - name: Unit and wire-compatibility tests (no robot or GPU)
+        run: bash scripts/test.sh all
+      - name: Entry-point help
+        run: thor-deploy --help
+  native:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake pkg-config liblcm-dev libyaml-cpp-dev
+      - name: Build controllers without launching them
+        run: bash scripts/build.sh

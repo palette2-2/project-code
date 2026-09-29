@@ -144,7 +144,7 @@ class Dex3PoseConfigTest(unittest.TestCase):
 
 class Dex3HandLCMTest(unittest.TestCase):
     def test_message_is_wire_compatible_with_deploy_type(self):
-        deploy_type_path = REPO_DIR / "deploy/g1_gym_deploy/lcm_types/hand_action_lcmt.py"
+        deploy_type_path = REPO_DIR / "src/thor_deploy/lcm_types/hand_action_lcmt.py"
         spec = importlib.util.spec_from_file_location("deploy_hand_action_lcmt", deploy_type_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

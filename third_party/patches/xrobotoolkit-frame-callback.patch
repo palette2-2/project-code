@@ -1,0 +1,278 @@
+diff --git a/bindings/py_bindings.cpp b/bindings/py_bindings.cpp
+index d562f63..b6e0a57 100644
+--- a/bindings/py_bindings.cpp
++++ b/bindings/py_bindings.cpp
+@@ -6,9 +6,11 @@
+ #include <mutex>
+ #include <sstream>
+ #include <array>
++#include <vector>
+ #include <nlohmann/json.hpp>
+ #include "PXREARobotSDK.h"
+ 
++namespace py = pybind11;
+ using json = nlohmann::json;
+ 
+ std::array<double, 7> LeftControllerPose;
+@@ -64,6 +66,9 @@ std::mutex leftHandMutex;
+ std::mutex rightHandMutex;
+ std::mutex bodyMutex;  // Mutex for body tracking data
+ std::mutex motionMutex;
++std::mutex callbackMutex;
++
++py::function FrameCallback;
+ 
+ std::array<double, 7> stringToPoseArray(const std::string& poseStr) {
+     std::array<double, 7> result{0};
+@@ -87,6 +92,189 @@ std::array<double, 6> stringToVelocityArray(const std::string& velocityStr) {
+     return result;
+ }
+ 
++py::dict buildFrameSnapshot() {
++    std::array<double, 7> leftControllerPose;
++    std::array<double, 7> rightControllerPose;
++    std::array<double, 7> headsetPose;
++    std::array<double, 2> leftAxis;
++    std::array<double, 2> rightAxis;
++    std::array<std::array<double, 7>, 26> leftHandTrackingState;
++    std::array<std::array<double, 7>, 26> rightHandTrackingState;
++    std::array<std::array<double, 7>, 24> bodyJointsPose;
++    std::array<std::array<double, 6>, 24> bodyJointsVelocity;
++    std::array<std::array<double, 6>, 24> bodyJointsAcceleration;
++    std::array<int64_t, 24> bodyJointsTimestamp;
++    std::array<std::array<double, 7>, 3> motionTrackerPose;
++    std::array<std::array<double, 6>, 3> motionTrackerVelocity;
++    std::array<std::array<double, 6>, 3> motionTrackerAcceleration;
++    std::array<std::string, 3> motionTrackerSerialNumbers;
++    bool leftMenuButton;
++    bool leftAxisClick;
++    bool leftPrimaryButton;
++    bool leftSecondaryButton;
++    bool rightMenuButton;
++    bool rightAxisClick;
++    bool rightPrimaryButton;
++    bool rightSecondaryButton;
++    double leftTrigger;
++    double leftGrip;
++    double rightTrigger;
++    double rightGrip;
++    double leftHandScale;
++    int leftHandIsActive;
++    double rightHandScale;
++    int rightHandIsActive;
++    int64_t timeStampNs;
++    int64_t bodyTimeStampNs;
++    bool bodyDataAvailable;
++    int numMotionDataAvailable;
++    int64_t motionTimeStampNs;
++
++    {
++        std::lock_guard<std::mutex> lock(leftMutex);
++        leftControllerPose = LeftControllerPose;
++        leftTrigger = LeftTrigger;
++        leftGrip = LeftGrip;
++        leftAxis = LeftAxis;
++        leftMenuButton = LeftMenuButton;
++        leftAxisClick = LeftAxisClick;
++        leftPrimaryButton = LeftPrimaryButton;
++        leftSecondaryButton = LeftSecondaryButton;
++    }
++    {
++        std::lock_guard<std::mutex> lock(rightMutex);
++        rightControllerPose = RightControllerPose;
++        rightTrigger = RightTrigger;
++        rightGrip = RightGrip;
++        rightAxis = RightAxis;
++        rightMenuButton = RightMenuButton;
++        rightAxisClick = RightAxisClick;
++        rightPrimaryButton = RightPrimaryButton;
++        rightSecondaryButton = RightSecondaryButton;
++    }
++    {
++        std::lock_guard<std::mutex> lock(headsetPoseMutex);
++        headsetPose = HeadsetPose;
++    }
++    {
++        std::lock_guard<std::mutex> lock(timestampMutex);
++        timeStampNs = TimeStampNs;
++    }
++    {
++        std::lock_guard<std::mutex> lock(leftHandMutex);
++        leftHandTrackingState = LeftHandTrackingState;
++        leftHandScale = LeftHandScale;
++        leftHandIsActive = LeftHandIsActive;
++    }
++    {
++        std::lock_guard<std::mutex> lock(rightHandMutex);
++        rightHandTrackingState = RightHandTrackingState;
++        rightHandScale = RightHandScale;
++        rightHandIsActive = RightHandIsActive;
++    }
++    {
++        std::lock_guard<std::mutex> lock(bodyMutex);
++        bodyJointsPose = BodyJointsPose;
++        bodyJointsVelocity = BodyJointsVelocity;
++        bodyJointsAcceleration = BodyJointsAcceleration;
++        bodyJointsTimestamp = BodyJointsTimestamp;
++        bodyTimeStampNs = BodyTimeStampNs;
++        bodyDataAvailable = BodyDataAvailable;
++    }
++    {
++        std::lock_guard<std::mutex> lock(motionMutex);
++        motionTrackerPose = MotionTrackerPose;
++        motionTrackerVelocity = MotionTrackerVelocity;
++        motionTrackerAcceleration = MotionTrackerAcceleration;
++        motionTrackerSerialNumbers = MotionTrackerSerialNumbers;
++        numMotionDataAvailable = NumMotionDataAvailable;
++        motionTimeStampNs = MotionTimeStampNs;
++    }
++
++    py::dict snapshot;
++    snapshot["timestamp_ns"] = timeStampNs;
++    snapshot["headset_pose"] = headsetPose;
++
++    py::dict leftController;
++    leftController["pose"] = leftControllerPose;
++    leftController["trigger"] = leftTrigger;
++    leftController["grip"] = leftGrip;
++    leftController["axis"] = leftAxis;
++    leftController["menu_button"] = leftMenuButton;
++    leftController["axis_click"] = leftAxisClick;
++    leftController["primary_button"] = leftPrimaryButton;
++    leftController["secondary_button"] = leftSecondaryButton;
++
++    py::dict rightController;
++    rightController["pose"] = rightControllerPose;
++    rightController["trigger"] = rightTrigger;
++    rightController["grip"] = rightGrip;
++    rightController["axis"] = rightAxis;
++    rightController["menu_button"] = rightMenuButton;
++    rightController["axis_click"] = rightAxisClick;
++    rightController["primary_button"] = rightPrimaryButton;
++    rightController["secondary_button"] = rightSecondaryButton;
++
++    py::dict controllers;
++    controllers["left"] = leftController;
++    controllers["right"] = rightController;
++    snapshot["controllers"] = controllers;
++
++    py::dict leftHand;
++    leftHand["tracking_state"] = leftHandTrackingState;
++    leftHand["scale"] = leftHandScale;
++    leftHand["is_active"] = leftHandIsActive;
++
++    py::dict rightHand;
++    rightHand["tracking_state"] = rightHandTrackingState;
++    rightHand["scale"] = rightHandScale;
++    rightHand["is_active"] = rightHandIsActive;
++
++    py::dict hands;
++    hands["left"] = leftHand;
++    hands["right"] = rightHand;
++    snapshot["hands"] = hands;
++
++    py::dict body;
++    body["available"] = bodyDataAvailable;
++    body["poses"] = bodyJointsPose;
++    body["velocities"] = bodyJointsVelocity;
++    body["accelerations"] = bodyJointsAcceleration;
++    body["imu_timestamps"] = bodyJointsTimestamp;
++    body["timestamp_ns"] = bodyTimeStampNs;
++    snapshot["body"] = body;
++
++    py::dict motion;
++    motion["count"] = numMotionDataAvailable;
++    motion["poses"] = motionTrackerPose;
++    motion["velocities"] = motionTrackerVelocity;
++    motion["accelerations"] = motionTrackerAcceleration;
++    motion["serial_numbers"] = motionTrackerSerialNumbers;
++    motion["timestamp_ns"] = motionTimeStampNs;
++    snapshot["motion_trackers"] = motion;
++
++    return snapshot;
++}
++
++void notifyFrameCallback() {
++    py::gil_scoped_acquire gil;
++
++    py::function callback;
++    {
++        std::lock_guard<std::mutex> lock(callbackMutex);
++        if (!FrameCallback || FrameCallback.is_none()) {
++            return;
++        }
++        callback = FrameCallback;
++    }
++
++    try {
++        callback(buildFrameSnapshot());
++    } catch (py::error_already_set& e) {
++        e.discard_as_unraisable("xrobotoolkit_sdk frame callback");
++    }
++}
++
+ void OnPXREAClientCallback(void* context, PXREAClientCallbackType type, int status, void* userData)
+ {
+     switch (type)
+@@ -260,6 +448,7 @@ void OnPXREAClientCallback(void* context, PXREAClientCallbackType type, int stat
+         } catch (const json::exception& e) {
+             std::cerr << "JSON parsing error: " << e.what() << std::endl;
+         }
++        notifyFrameCallback();
+             break;
+     }
+ }
+@@ -271,9 +460,36 @@ void init() {
+ }
+ 
+ void deinit() {
++    py::gil_scoped_acquire gil;
++    {
++        std::lock_guard<std::mutex> lock(callbackMutex);
++        FrameCallback = py::function();
++    }
+     PXREADeinit();
+ }
+ 
++void registerFrameCallback(py::function callback) {
++    py::gil_scoped_acquire gil;
++    std::lock_guard<std::mutex> lock(callbackMutex);
++    FrameCallback = std::move(callback);
++}
++
++void clearFrameCallback() {
++    py::gil_scoped_acquire gil;
++    std::lock_guard<std::mutex> lock(callbackMutex);
++    FrameCallback = py::function();
++}
++
++bool hasFrameCallback() {
++    py::gil_scoped_acquire gil;
++    std::lock_guard<std::mutex> lock(callbackMutex);
++    return FrameCallback && !FrameCallback.is_none();
++}
++
++void emitFrameCallbackNow() {
++    notifyFrameCallback();
++}
++
+ std::array<double, 7> getLeftControllerPose() {
+     std::lock_guard<std::mutex> lock(leftMutex);
+     return LeftControllerPose;
+@@ -514,6 +730,14 @@ PYBIND11_MODULE(xrobotoolkit_sdk, m) {
+     m.def("get_motion_tracker_acceleration", &getMotionTrackerAcceleration, "Get the motion tracker acceleration data (3 trackers, 6 values each: ax,ay,az,wax,way,waz).");
+     m.def("get_motion_tracker_serial_numbers", &getMotionTrackerSerialNumbers, "Get the serial numbers of the motion trackers.");
+     m.def("get_motion_timestamp_ns", &getMotionTimeStampNs, "Get the motion data timestamp in nanoseconds.");
++    m.def("register_frame_callback", &registerFrameCallback, py::arg("callback"),
++          "Register a Python callback that is invoked whenever new device JSON arrives. The callback receives one snapshot dict.");
++    m.def("clear_frame_callback", &clearFrameCallback,
++          "Clear the registered frame callback.");
++    m.def("has_frame_callback", &hasFrameCallback,
++          "Return True if a frame callback is currently registered.");
++    m.def("emit_frame_callback_now", &emitFrameCallbackNow,
++          "Invoke the registered frame callback immediately with the current cached snapshot.");
+     
+     m.doc() = "Python bindings for PXREARobot SDK using pybind11.";
+-}
+\ No newline at end of file
++}
