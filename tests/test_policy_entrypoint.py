@@ -17,7 +17,7 @@ class PolicyEntrypointTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertEqual(
             Path(policy.resolve_policy_path(environ={})),
-            root / "checkpoints/0909/model_10000.onnx",
+            root / "checkpoints/g1_whole_body/policy.onnx",
         )
         self.assertTrue(policy.DEFAULT_POLICY_PATH.is_file())
 

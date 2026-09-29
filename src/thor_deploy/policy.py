@@ -8,7 +8,7 @@ from pathlib import Path
 from thor_deploy.utils.rc_command_source import resolve_rc_command_source
 
 DEFAULT_POLICY_PATH = (
-    Path(__file__).resolve().parents[2] / "checkpoints/0909/model_10000.onnx"
+    Path(__file__).resolve().parents[2] / "checkpoints/g1_whole_body/policy.onnx"
 )
 DEFAULT_LCM_URL = "udpm://239.255.76.67:7667?ttl=255"
 OBSERVATION_SIZE = 115
@@ -111,7 +111,7 @@ def main(argv=None):
     )
     parser.add_argument(
         "--policy",
-        help="ONNX path; overrides G1_POLICY_ONNX and the bundled 0909 baseline",
+        help="ONNX path; overrides G1_POLICY_ONNX and the bundled G1 whole-body policy",
     )
     parser.add_argument(
         "--rc-source",

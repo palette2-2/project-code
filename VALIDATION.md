@@ -44,7 +44,7 @@ Conda environments were reused without replacing their runtime dependencies.
   ONNX offline check and the optional teleop asset check. No untracked repository
   files are needed. External runtime dependencies were reused from the host.
 - Formatting of inherited Python modules preserves their parsed syntax trees.
-- The 0909 checkpoint is the only ONNX; SHA256 remains
+- The G1 whole-body checkpoint is the only ONNX; SHA256 remains
   `a3664468b58b3e02444ec1057a98a8a4fe0bf6123be8f3be13c40d1e77a339e3`.
 - C++ controller source, generated LCM bindings and hand pose configuration are
   retained from the baseline. Python packaging/imports and the policy entry point

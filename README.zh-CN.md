@@ -2,28 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-面向 **Unitree G1（29 自由度）** 的独立部署代码，包含 ONNX 策略推理、宇树遥控器控制，以及可选的 PICO 上肢遥操作和 **Dex3-1** 灵巧手控制。运行时不依赖原训练仓库、Isaac Gym 或 `humanoidverse`。
+面向 **Unitree G1（29 自由度）** 的独立部署代码，包含 ONNX 策略推理、宇树遥控器控制，以及可选的 PICO 上肢遥操作和 **Dex3-1** 灵巧手控制。
 
-仓库仅保留 **0909 的 `model_10000.onnx`** 基线策略，不包含训练代码、训练环境或其他 checkpoint。
-
-> 当前处于公开发布准备阶段。继承代码的许可证声明存在差异，项目新增部分及模型的发布条款尚未指定。具体见[许可证状态](LICENSE.md)和[第三方来源说明](THIRD_PARTY_NOTICES.md)。
-
-## 功能范围
-
-- 50 Hz 策略部署：单帧观测 115 维，5 帧历史共 575 维，输出 29 维关节动作。
-- 基于 Unitree SDK2 和 LCM 的 C++ 身体、手部控制程序。
-- 宇树遥控器与 PICO 二选一作为运动命令来源。
-- PICO/GMR 上肢参考、暂停/恢复插值，以及左右 Dex3 独立开合。
-- 电机力矩和温度遥测、回归测试及不连接硬件的策略管线检查。
-
-```text
-宇树遥控器 ── g1_control ── LCM rc_command ─┐
-                                           ├─ Thor 策略 ── LCM ── g1_control ── G1
-PICO ── XRoboToolkit ── GMR bridge ── LCM ───┘
-                              └─ hand_action ── hand_control ── Dex3
-```
-
-策略只订阅一个遥控命令频道，上肢参考通过独立频道接收。桥接程序保留了供外部动作消费者使用的 ZMQ 输出，Thor 策略本身不依赖这些 ZMQ 接口。
 
 ## 环境要求
 
@@ -135,7 +115,7 @@ bash scripts/run_policy.sh --rc-source pico
 
 | 配置项 | 默认值 / 含义 |
 | --- | --- |
-| `--policy` / `G1_POLICY_ONNX` | 命令行 > 环境变量 > `checkpoints/0909/model_10000.onnx` |
+| `--policy` / `G1_POLICY_ONNX` | 命令行 > 环境变量 > `checkpoints/g1_whole_body/policy.onnx` |
 | `--rc-source` / `RC_COMMAND_SOURCE` | 命令行 > 环境变量 > `unitree`；另一选项为 `pico` |
 | `--lcm-url` / `LCM_DEFAULT_URL` | `udpm://239.255.76.67:7667?ttl=255` |
 | `ACTUAL_HUMAN_HEIGHT` | `1.6` 米；用于 PICO 启动脚本 |
@@ -151,15 +131,15 @@ Dex3 JSON 包含 `left_open`、`left_closed`、`right_open`、`right_closed` 四
 ## 目录结构
 
 ```text
-src/thor_deploy/       Python 策略、环境、控制辅助模块及 LCM 类型
-cpp/                  项目身体/手部控制程序及 C++ LCM 绑定
-third_party/          Unitree SDK2 快照及 XRoboToolkit 回调补丁
-teleop/               可选 PICO 桥接、手势配置和录制工具
-checkpoints/0909/     唯一 ONNX 基线及来源/SHA256 清单
-scripts/              编译、启动、测试及离线验证入口
-tests/                策略/控制测试；遥操作测试位于 teleop/tests
-docs/                 详细说明及保留的上游署名
-licenses/             保留的许可证；整体状态见 LICENSE.md
+src/thor_deploy/             Python 策略、环境、控制辅助模块及 LCM 类型
+cpp/                         项目身体/手部控制程序及 C++ LCM 绑定
+third_party/                 Unitree SDK2 快照及 XRoboToolkit 回调补丁
+teleop/                      可选 PICO 桥接、手势配置和录制工具
+checkpoints/g1_whole_body/   唯一 ONNX 基线及来源/SHA256 清单
+scripts/                     编译、启动、测试及离线验证入口
+tests/                       策略/控制测试；遥操作测试位于 teleop/tests
+docs/                        详细说明及保留的上游署名
+licenses/                    保留的许可证；整体状态见 LICENSE.md
 ```
 
 `scripts/build_sdk.sh` 保留为 `scripts/build.sh` 的别名。旧路径 `deploy/g1_gym_deploy/scripts/deploy_policy.py` 保留为兼容入口，新集成建议使用 CLI 或 shell 启动脚本。

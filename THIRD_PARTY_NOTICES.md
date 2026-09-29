@@ -60,7 +60,7 @@ are not redistributed here.
 
 ## Checkpoint
 
-The single included checkpoint is the 0909 `model_10000.onnx` export. Its
-source run and SHA256 are in [the manifest](checkpoints/0909/manifest.json).
+The single included checkpoint is **G1 Whole-Body Policy** (`policy.onnx`). Its
+source run and SHA256 are in [the manifest](checkpoints/g1_whole_body/manifest.json).
 This is provenance information, not a declaration of model licensing or a
 hardware certification. No additional training checkpoints are bundled.

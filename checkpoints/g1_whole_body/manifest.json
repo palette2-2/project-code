@@ -1,5 +1,6 @@
 {
   "source": "logs/thor1-tug/20260909_232620-thor1-tug-yaw-lateral-tracking-stage2-v1-upper-body-forward-smooth-hold-waist-credit-stance-balance-balanced-motion-tracking-v1-decoupled_locomotion-g1_29dof_fakehand/exported/model_10000.onnx",
-  "file": "model_10000.onnx",
-  "sha256": "a3664468b58b3e02444ec1057a98a8a4fe0bf6123be8f3be13c40d1e77a339e3"
+  "file": "policy.onnx",
+  "sha256": "a3664468b58b3e02444ec1057a98a8a4fe0bf6123be8f3be13c40d1e77a339e3",
+  "name": "G1 Whole-Body Policy"
 }

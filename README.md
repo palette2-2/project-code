@@ -4,36 +4,7 @@
 
 A standalone deployment stack for **Unitree G1 (29 DoF)**, with ONNX policy
 inference, Unitree remote control, optional PICO upper-body teleoperation, and
-**Dex3-1** hand control. It runs independently of the training repository and does
-not require Isaac Gym or `humanoidverse`.
-
-The included baseline is the **0909 `model_10000.onnx`** policy. Training code,
-training environments and other checkpoints are outside this repository.
-
-> Publication preparation is in progress. Inherited license statements conflict,
-> and the release terms for project additions and weights are not yet specified.
-> See [licensing status](LICENSE.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
-
-## What is included
-
-- A 50 Hz deployment loop: 115-dimensional observations, five-frame history
-  (575 inputs), and 29 joint actions.
-- C++ body and hand controllers using Unitree SDK2 and LCM.
-- Selection of exactly one remote-command source: Unitree or PICO.
-- PICO/GMR upper-body references, pause/resume blending and independent Dex3 toggles.
-- Motor torque/temperature telemetry, regression tests and a hardware-free
-  policy pipeline check.
-
-```text
-Unitree remote ── g1_control ── LCM rc_command ─┐
-                                               ├─ Thor policy ── LCM ── g1_control ── G1
-PICO ── XRoboToolkit ── GMR bridge ── LCM ───────┘
-                              └─ hand_action ── hand_control ── Dex3
-```
-
-The policy subscribes to one RC channel; the optional upper-body reference is a
-separate stream. ZMQ outputs are retained for external motion consumers but are
-not needed by the Thor policy.
+**Dex3-1** hand control.
 
 ## Requirements
 
@@ -174,7 +145,7 @@ an automatic emergency-stop mechanism.
 
 | Setting | Default / meaning |
 | --- | --- |
-| `--policy` / `G1_POLICY_ONNX` | CLI > environment > `checkpoints/0909/model_10000.onnx` |
+| `--policy` / `G1_POLICY_ONNX` | CLI > environment > `checkpoints/g1_whole_body/policy.onnx` |
 | `--rc-source` / `RC_COMMAND_SOURCE` | CLI > environment > `unitree`; alternative `pico` |
 | `--lcm-url` / `LCM_DEFAULT_URL` | `udpm://239.255.76.67:7667?ttl=255` |
 | `ACTUAL_HUMAN_HEIGHT` | `1.6` metres; PICO launcher |
@@ -193,15 +164,15 @@ joint limits; tune them for the actual hand/task after checking motion.
 ## Repository layout
 
 ```text
-src/thor_deploy/       Python policy, environments, control helpers and LCM types
-cpp/                  Project body/hand controllers and C++ LCM bindings
-third_party/          Vendored Unitree SDK2 and XRoboToolkit callback patch
-teleop/               Optional PICO bridge, hand configuration and recording tools
-checkpoints/0909/     Single ONNX baseline and provenance/checksum manifest
-scripts/              Build, launch, test and offline validation entry points
-tests/                Policy/control tests (teleop tests live in teleop/tests)
-docs/                 Detailed notes and retained upstream attribution
-licenses/             Retained licenses; see LICENSE.md for status
+src/thor_deploy/             Python policy, environments, control helpers and LCM types
+cpp/                         Project body/hand controllers and C++ LCM bindings
+third_party/                 Vendored Unitree SDK2 and XRoboToolkit callback patch
+teleop/                      Optional PICO bridge, hand configuration and recording tools
+checkpoints/g1_whole_body/   Single ONNX baseline and provenance/checksum manifest
+scripts/                     Build, launch, test and offline validation entry points
+tests/                       Policy/control tests (teleop tests live in teleop/tests)
+docs/                        Detailed notes and retained upstream attribution
+licenses/                    Retained licenses; see LICENSE.md for status
 ```
 
 `scripts/build_sdk.sh` remains an alias for `scripts/build.sh`. The former
