@@ -1,0 +1,7 @@
+struct motor_safety_state_lcmt
+{
+    float tau_est[29];
+    int16_t temperature[58];
+    int32_t motor_state[29];
+    int64_t timestamp_us;
+}

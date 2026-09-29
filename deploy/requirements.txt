@@ -1,0 +1,9 @@
+# Install a CUDA-enabled PyTorch build appropriate for the target host first.
+numpy
+torch
+onnxruntime
+lcm
+matplotlib
+pandas
+# Optional network configuration utility:
+netifaces

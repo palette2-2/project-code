@@ -1,0 +1,5 @@
+# The GMR and XRoboToolkit dependencies are installed separately.
+pyzmq>=27.1.0
+lcm
+numpy
+scipy>=1.14

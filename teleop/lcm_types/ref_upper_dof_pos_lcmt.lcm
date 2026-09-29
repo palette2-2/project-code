@@ -1,0 +1,4 @@
+struct ref_upper_dof_pos_lcmt
+{
+    double ref_upper_dof_pos[14];
+}
